@@ -1,0 +1,17 @@
+{
+  "name": "coatornot",
+  "version": "1.0.0",
+  "description": "Get real-time weather data with AI-powered outfit and travel suggestions",
+  "author": {
+    "name": "Ayn",
+    "github": "ayn-builds"
+  },
+  "category": "data-ai",
+  "tags": ["weather", "AI", "data", "productivity"],
+  "commands": [
+    {
+      "name": "weather",
+      "description": "Get weather and smart suggestions for any city"
+    }
+  ]
+}
