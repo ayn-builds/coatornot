@@ -1,14 +1,8 @@
 import httpx
-import os
 import json
-from dotenv import load_dotenv
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
-
-load_dotenv()
-API_KEY = os.getenv("OPENWEATHER_API_KEY")
-BASE_URL = "https://api.openweathermap.org/data/2.5/weather"
 
 app = Server("coatornot")
 
@@ -34,20 +28,42 @@ async def list_tools():
 @app.call_tool()
 async def call_tool(name: str, arguments: dict):
     city = arguments["city"]
+    
     async with httpx.AsyncClient() as client:
-        response = await client.get(BASE_URL, params={
-            "q": city,
-            "appid": API_KEY,
-            "units": "metric"
-        })
-        data = response.json()
+        # Step 1 — Convert city to coordinates
+        geo = await client.get(
+            "https://geocoding-api.open-meteo.com/v1/search",
+            params={"name": city, "count": 1}
+        )
+        geo_data = geo.json()
+        
+        if not geo_data.get("results"):
+            return [TextContent(type="text", text=json.dumps({
+                "error": f"City '{city}' not found. Please check the spelling."
+            }))]
+        
+        lat = geo_data["results"][0]["latitude"]
+        lon = geo_data["results"][0]["longitude"]
+        city_name = geo_data["results"][0]["name"]
+        country = geo_data["results"][0]["country"]
 
-        temp_c = data["main"]["temp"]
+        # Step 2 — Get weather from Open-Meteo
+        weather = await client.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "current": "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,weather_code",
+                "temperature_unit": "celsius"
+            }
+        )
+        w = weather.json()["current"]
+
+        temp_c = w["temperature_2m"]
         temp_f = round((temp_c * 9/5) + 32, 1)
-        humidity = data["main"]["humidity"]
-        wind_speed = data["wind"]["speed"]
-        conditions = data["weather"][0]["description"]
-        rain = "rain" in conditions.lower() or "drizzle" in conditions.lower()
+        humidity = w["relative_humidity_2m"]
+        wind_speed = w["wind_speed_10m"]
+        rain = w["precipitation"] > 0
 
         # Coat recommendation
         if temp_c < 10:
@@ -73,12 +89,11 @@ async def call_tool(name: str, arguments: dict):
             outfit = "Light clothes, shorts or summer dress — it's warm!"
 
         result = {
-            "city": city,
+            "city": f"{city_name}, {country}",
             "temperature_c": temp_c,
             "temperature_f": temp_f,
             "humidity": humidity,
             "wind_speed": wind_speed,
-            "conditions": conditions,
             "coat_needed": coat,
             "umbrella_needed": umbrella,
             "outfit_suggestion": outfit
